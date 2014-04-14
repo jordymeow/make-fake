@@ -1,0 +1,95 @@
+# NAM MAKE
+# Makefile for Web UIs
+# By Jordy Theiller / March 2014
+# Thanks to: Elijah Madden
+
+# System
+MAKE_DIR=`dirname $0`
+LESSC="$MAKE_DIR/bin/less/lessc -x"
+ZIP="$MAKE_DIR/bin/7z.exe"
+
+# Reset variables
+PROJECT=""
+MODULES=""
+
+# Load variable from makefile
+source fakefile
+
+echo "* PROJECT '$PROJECT'"
+
+if [ "$1" = "--nopack" ]; then
+	echo "! Packing will not be used."
+	PACK="cat"
+else
+	PACK="java -jar $MAKE_DIR/bin/yuicompressor-2.4.7.jar --nomunge"
+fi
+
+# Clean the build folder
+rm -Rf ./build/*
+
+###################################
+# PERF
+###################################
+
+function make_module() {
+
+	# Pack JS
+	grep "nam-\(dir\|css\|js\)" $module/index.html | sed 's/.*nam-\(dir\|css\|js\)-\(pack\|copy\)="\([^"]*\)" \(href\|src\)="\([^"]*\)".*/\1\|\2\|\5\|\3/g' | while read LINE ; do
+		type=$(echo "$LINE" | cut -d'|' -f1)
+		action=$(echo "$LINE" | cut -d'|' -f2)
+		source=$(echo "$LINE" | cut -d'|' -f3)
+		target=$(echo "$LINE" | cut -d'|' -f4)
+
+		if [[ $action == *\s* ]]
+		then
+			echo -e "\e[00;31m! [ERROR] Line format is wrong: $LINE\e[00m";
+			continue
+		fi
+
+		if [ $action = 'copy' ]; then
+			echo "+ [FOPY] ./$module/$source > ./build/$module/$target"
+			mkdir -p `dirname ./build/$module/$target`
+			cp -r ./$module/$source ./build/$module/$target
+		elif [ $action = 'pack' ]; then
+			if [ $type = 'js' ]; then
+				echo "+ [FACK] ./$module/$source > ./build/$module/$target"
+				mkdir -p `dirname ./build/$module/$target`
+				echo -e "\n" >> ./build/$module/$target
+				$PACK ./$module/$source | tr -d '\r' >> ./build/$module/$target
+				echo -e "\n" >> ./build/$module/$target
+			elif [ $type = 'css' ]; then
+				if [[ $source == *.less* ]]
+				then
+					echo "+ [FESS] ./$module/$source > ./build/$module/$target"
+					mkdir -p `dirname ./build/$module/$target`
+					$LESSC ./$module/$source >> ./build/$module/$target
+				else
+					echo "+ [FACK] ./$module/$source > ./build/$module/$target"
+					mkdir -p `dirname ./build/$module/$target`
+					echo -e "\n" >> ./build/$module/$target
+					$PACK ./$module/$source | tr -d '\r' >> ./build/$module/$target
+					echo -e "\n" >> ./build/$module/$target
+				fi
+			fi
+		fi
+	done
+
+	sed '/<!-- DEV -->/,/<!-- \/DEV -->/d' ./$module/index.html > ./build/$module/1.tmp
+	sed '/<!-- PRD --><!--/d' ./build/$module/1.tmp > ./build/$module/2.tmp
+	sed '/--><!-- \/PRD -->/d' ./build/$module/2.tmp > ./build/$module/index.html
+	rm ./build/$module/*.tmp
+	echo "+ [HTML] ./$module/index.html > ./build/$module/index.html"
+}
+
+# Compile / Make all the modules defined in the makefile
+for current in "${MODULES[@]}"
+do
+	module=$current
+	echo "* FAKE MODULE '$module'"
+	make_module
+done
+
+# Let's zip!
+BUILD=$(date +%Y.%m.%d@%H.%M)
+$ZIP a ./builds/$PROJECT-$BUILD.zip ./build/* > /dev/null
+echo "+ [ZIP] Build was zipped to ./builds/$PROJECT-$BUILD.zip"
