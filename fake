@@ -1,7 +1,7 @@
-# NAM MAKE
+# MAKE
 # Makefile for Web UIs
 # By Jordy Theiller / March 2014
-# Thanks to: Elijah Madden
+# Special thanks to Elijah Madden
 
 # System
 MAKE_DIR=`dirname $0`
@@ -34,7 +34,7 @@ rm -Rf ./build/*
 function make_module() {
 
 	# Pack JS
-	grep "nam-\(dir\|css\|js\)" $module/index.html | sed 's/.*nam-\(dir\|css\|js\)-\(pack\|copy\)="\([^"]*\)" \(href\|src\)="\([^"]*\)".*/\1\|\2\|\5\|\3/g' | while read LINE ; do
+	grep "fake-\(dir\|css\|js\)" $module/index.html | sed 's/.*fake-\(dir\|css\|js\)-\(pack\|copy\)="\([^"]*\)" \(href\|src\)="\([^"]*\)".*/\1\|\2\|\5\|\3/g' | while read LINE ; do
 		type=$(echo "$LINE" | cut -d'|' -f1)
 		action=$(echo "$LINE" | cut -d'|' -f2)
 		source=$(echo "$LINE" | cut -d'|' -f3)
