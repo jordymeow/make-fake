@@ -19,9 +19,23 @@ echo "* PROJECT '$PROJECT'"
 
 if [ "$1" = "--nopack" ]; then
 	echo "! Packing will not be used."
-	PACK="cat"
+	PACKJS="cat"
+	PACKCSS="cat"
+elif [ "$1" = "--uglify" ]; then
+	if which uglifyjs >/dev/null; then
+		PACKJS="uglifyjs"
+	else
+		PACKJS="java -jar $MAKE_DIR/bin/yuicompressor-2.4.7.jar --nomunge"
+	fi
+
+	if which uglifycss >/dev/null; then
+		PACKCSS="uglifycss"
+	else
+		PACKCSS="java -jar $MAKE_DIR/bin/yuicompressor-2.4.7.jar --nomunge"
+	fi
 else
-	PACK="java -jar $MAKE_DIR/bin/yuicompressor-2.4.7.jar --nomunge"
+	PACKJS="java -jar $MAKE_DIR/bin/yuicompressor-2.4.7.jar --nomunge"
+	PACKCSS="java -jar $MAKE_DIR/bin/yuicompressor-2.4.7.jar --nomunge"
 fi
 
 # Clean the build folder
@@ -55,7 +69,7 @@ function make_module() {
 				echo "+ [FACK] ./$module/$source > ./build/$module/$target"
 				mkdir -p `dirname ./build/$module/$target`
 				echo -e "\n" >> ./build/$module/$target
-				$PACK ./$module/$source | tr -d '\r' >> ./build/$module/$target
+				$PACKJS ./$module/$source | tr -d '\r' >> ./build/$module/$target
 				echo -e "\n" >> ./build/$module/$target
 			elif [ $type = 'css' ]; then
 				if [[ $source == *.less* ]]
@@ -67,7 +81,7 @@ function make_module() {
 					echo "+ [FACK] ./$module/$source > ./build/$module/$target"
 					mkdir -p `dirname ./build/$module/$target`
 					echo -e "\n" >> ./build/$module/$target
-					$PACK ./$module/$source | tr -d '\r' >> ./build/$module/$target
+					$PACKCSS ./$module/$source | tr -d '\r' >> ./build/$module/$target
 					echo -e "\n" >> ./build/$module/$target
 				fi
 			fi
