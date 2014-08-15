@@ -1,12 +1,49 @@
+#!/bin/bash
+# vim: set syntax=sh:
+
 # MAKE
 # Makefile for Web UIs
 # By Jordy Theiller / March 2014
 # Special thanks to Elijah Madden
 
+# http://robertmuth.blogspot.jp/2012/08/better-bash-scripting-in-15-minutes.html
+set -o nounset
+set -o errexit
+
+# http://www.kfirlavi.com/blog/2012/11/14/defensive-bash-programming/
+readonly PROGNAME=$(basename $0)
+readonly PROGDIR=$(dirname $0)
+readonly ARGS="$@"
+
+# http://linuxcommand.org/wss0160.php#clean_up
+function cleanup () {
+	exit 0
+}
+
+trap cleanup SIGHUP SIGINT SIGTERM
+
+function GetCompressor () {
+	local CAT="cat"
+	local UGLIFY="uglify${1:-}"
+	local YUI="java -jar $PROGDIR/bin/yuicompressor-2.4.7.jar --nomunge"
+	local OPT=${ARGS[0]:-}
+
+	if [[ "$OPT" = "--nopack" ]]; then
+		echo "$CAT"
+	elif [[ "$OPT" = "--uglify" ]] && which "$UGLIFY" >/dev/null; then
+		echo "$UGLIFY"
+	else 
+		echo "$YUI"
+	fi
+
+	return 0;
+}
+
 # System
-MAKE_DIR=`dirname $0`
-LESSC="$MAKE_DIR/bin/less/lessc -x"
-ZIP="$MAKE_DIR/bin/7z.exe"
+readonly LESSC="$PROGDIR/bin/less/lessc -x"
+readonly ZIP="$PROGDIR/bin/7z.exe"
+readonly PACKJS=$(GetCompressor "js")
+readonly PACKCSS=$(GetCompressor "css")
 
 # Reset variables
 PROJECT=""
@@ -15,95 +52,141 @@ MODULES=""
 # Load variable from makefile
 source fakefile
 
-echo "* PROJECT '$PROJECT'"
+function CopyCommand () {
+	local MODULE=${1:-}
+	local SOURCE=${2:-}
+	local TARGET=${3:-}
+	local ERR="Unknown"
 
-if [ "$1" = "--nopack" ]; then
-	echo "! Packing will not be used."
-	PACKJS="cat"
-	PACKCSS="cat"
-elif [ "$1" = "--uglify" ]; then
-	if which uglifyjs >/dev/null; then
-		PACKJS="uglifyjs"
-	else
-		PACKJS="java -jar $MAKE_DIR/bin/yuicompressor-2.4.7.jar --nomunge"
+	if ! ERR=$(mkdir -p $(dirname ./build/$MODULE/$TARGET) 2>&1); then
+		echo "- [ERROR] Failed creating directory ./build/$MODULE/$TARGET With error: $ERR"
+		return 1
 	fi
 
-	if which uglifycss >/dev/null; then
-		PACKCSS="uglifycss"
-	else
-		PACKCSS="java -jar $MAKE_DIR/bin/yuicompressor-2.4.7.jar --nomunge"
+	if ! ERR=$(cp -r ./$MODULE/$SOURCE ./build/$MODULE/$TARGET); then
+		echo "- [ERROR] Failed to copy ./$MODULE/$SOURCE > ./build/$MODULE/$TARGET With error: $ERR"
+		return 1
 	fi
-else
-	PACKJS="java -jar $MAKE_DIR/bin/yuicompressor-2.4.7.jar --nomunge"
-	PACKCSS="java -jar $MAKE_DIR/bin/yuicompressor-2.4.7.jar --nomunge"
-fi
+	
+	echo "+ [FOPY] ./$MODULE/$SOURCE > ./build/$MODULE/$TARGET"
 
-# Clean the build folder
-rm -Rf ./build/*
-
-###################################
-# PERF
-###################################
-
-function make_module() {
-
-	# Pack JS
-	grep "fake-\(dir\|css\|js\)" $module/index.html | sed 's/.*fake-\(dir\|css\|js\)-\(pack\|copy\)="\([^"]*\)" \(href\|src\)="\([^"]*\)".*/\1\|\2\|\5\|\3/g' | while read LINE ; do
-		type=$(echo "$LINE" | cut -d'|' -f1)
-		action=$(echo "$LINE" | cut -d'|' -f2)
-		source=$(echo "$LINE" | cut -d'|' -f3)
-		target=$(echo "$LINE" | cut -d'|' -f4)
-
-		if [[ $action == *\s* ]]
-		then
-			echo -e "\e[00;31m! [ERROR] Line format is wrong: $LINE\e[00m";
-			continue
-		fi
-
-		if [ $action = 'copy' ]; then
-			echo "+ [FOPY] ./$module/$source > ./build/$module/$target"
-			mkdir -p `dirname ./build/$module/$target`
-			cp -r ./$module/$source ./build/$module/$target
-		elif [ $action = 'pack' ]; then
-			if [ $type = 'js' ]; then
-				echo "+ [FACK] ./$module/$source > ./build/$module/$target"
-				mkdir -p `dirname ./build/$module/$target`
-				echo -e "\n" >> ./build/$module/$target
-				$PACKJS ./$module/$source | tr -d '\r' >> ./build/$module/$target
-				echo -e "\n" >> ./build/$module/$target
-			elif [ $type = 'css' ]; then
-				if [[ $source == *.less* ]]
-				then
-					echo "+ [FESS] ./$module/$source > ./build/$module/$target"
-					mkdir -p `dirname ./build/$module/$target`
-					$LESSC ./$module/$source >> ./build/$module/$target
-				else
-					echo "+ [FACK] ./$module/$source > ./build/$module/$target"
-					mkdir -p `dirname ./build/$module/$target`
-					echo -e "\n" >> ./build/$module/$target
-					$PACKCSS ./$module/$source | tr -d '\r' >> ./build/$module/$target
-					echo -e "\n" >> ./build/$module/$target
-				fi
-			fi
-		fi
-	done
-
-	sed '/<!-- DEV -->/,/<!-- \/DEV -->/d' ./$module/index.html > ./build/$module/1.tmp
-	sed '/<!-- PRD --><!--/d' ./build/$module/1.tmp > ./build/$module/2.tmp
-	sed '/--><!-- \/PRD -->/d' ./build/$module/2.tmp > ./build/$module/index.html
-	rm ./build/$module/*.tmp
-	echo "+ [HTML] ./$module/index.html > ./build/$module/index.html"
+	return 0
 }
 
-# Compile / Make all the modules defined in the makefile
-for current in "${MODULES[@]}"
-do
-	module=$current
-	echo "* FAKE MODULE '$module'"
-	make_module
-done
+function PackJSCommand () {
+	local MODULE=${1:-}
+	local SOURCE=${2:-}
+	local TARGET=${3:-}
+	local ERR="Unknown"
 
-# Let's zip!
-BUILD=$(date +%Y.%m.%d@%H.%M)
-$ZIP a ./builds/$PROJECT-$BUILD.zip ./build/* > /dev/null
-echo "+ [ZIP] Build was zipped to ./builds/$PROJECT-$BUILD.zip"
+	if ! ERR=$(mkdir -p $(dirname ./build/$MODULE/$TARGET) 2>&1); then
+		echo "- [ERROR] Failed creating directory ./build/$MODULE/$TARGET With error: $ERR"
+		return 1
+	fi
+
+	# TODO: this probably doesn't catch anything useful, break it down more
+	if ! ERR=$(echo -e "\n"$($PACKJS ./$MODULE/$SOURCE | tr -d '\r')"\n"  >> ./build/$MODULE/$TARGET 2>&1); then
+		echo "- [ERROR] Failed packing js in ./build/$MODULE/$TARGET With error: $ERR"
+		return 1
+	fi
+
+	echo "+ [FACK] ./$MODULE/$SOURCE > ./build/$MODULE/$TARGET"
+	
+	return 0
+}
+
+function PackCSSCommand () {
+	local MODULE=${1:-}
+	local SOURCE=${2:-}
+	local TARGET=${3:-}
+	local ERR="Unknown"
+
+	if ! ERR=$(mkdir -p $(dirname ./build/$MODULE/$TARGET) 2>&1); then
+		echo "- [ERROR] Failed creating directory ./build/$MODULE/$TARGET With error: $ERR"
+		return 1
+	fi
+
+	if [[ $SOURCE == *.less* ]]; then
+
+		if ! ERR=$($LESSC ./$MODULE/$SOURCE >> ./build/$MODULE/$TARGET 2>&1); then
+			echo "- [ERROR] Failed running 'less' on ./$MODULE/$SOURCE"	
+			return 1
+		fi
+
+		echo "+ [FESS] ./$MODULE/$SOURCE > ./build/$MODULE/$TARGET"
+		
+	else
+
+		# TODO: this probably doesn't catch anything useful, break it down more
+		if ! ERR=$(echo -e "\n"$($PACKCSS ./$MODULE/$SOURCE | tr -d '\r')"\n"  >> ./build/$MODULE/$TARGET 2>&1); then
+			echo "- [ERROR] Failed packing css in ./build/$MODULE/$TARGET With error: $ERR"
+			return 1
+		fi
+
+		echo "+ [FACK] ./$MODULE/$SOURCE > ./build/$MODULE/$TARGET"
+		
+	fi
+
+	return 0
+}
+
+function ProcessLine () {
+	local MODULE=${1:-}
+	local LINE=${2:-}
+	local TYPE=$(echo "$LINE" | cut -d'|' -f1)
+	local ACTION=$(echo "$LINE" | cut -d'|' -f2)
+	local SOURCE=$(echo "$LINE" | cut -d'|' -f3)
+	local TARGET=$(echo "$LINE" | cut -d'|' -f4)
+
+	if [[ "$ACTION" == *\s* ]]; then
+		echo -e "\e[00;31m! [ERROR] Line format is wrong: $LINE\e[00m";
+		continue
+	fi
+
+	if [[ "$ACTION" = "copy" ]]; then
+		echo $(CopyCommand $MODULE $SOURCE $TARGET)
+	elif [[ "$ACTION" = "pack" ]] && [[ "$TYPE" = "js" ]]; then
+		echo $(PackJSCommand $MODULE $SOURCE $TARGET)
+	elif [[ "$ACTION" = "pack" ]] && [[ "$TYPE" = "css" ]]; then
+		echo $(PackCSSCommand $MODULE $SOURCE $TARGET)
+	fi
+
+	return 0
+}
+
+function make_module() {
+	local MODULE=${1:-}
+	local LINE
+
+	# Pack JS
+	grep "fake-\(dir\|css\|js\)" $MODULE/index.html | sed 's/.*fake-\(dir\|css\|js\)-\(pack\|copy\)="\([^"]*\)" \(href\|src\)="\([^"]*\)".*/\1\|\2\|\5\|\3/g' | while read LINE ; do
+		echo $(ProcessLine $MODULE $LINE)
+	done
+
+	sed '/<!-- DEV -->/,/<!-- \/DEV -->/d' ./$MODULE/index.html > ./build/$MODULE/1.tmp
+	sed '/<!-- PRD --><!--/d' ./build/$MODULE/1.tmp > ./build/$MODULE/2.tmp
+	sed '/--><!-- \/PRD -->/d' ./build/$MODULE/2.tmp > ./build/$MODULE/index.html
+	rm ./build/$MODULE/*.tmp
+	echo "+ [HTML] ./$MODULE/index.html > ./build/$MODULE/index.html"
+}
+
+function main () {
+	echo "* PROJECT '$PROJECT'"
+
+	# Clean the build folder
+	rm -Rf ./build/*
+
+	# Compile / Make all the modules defined in the makefile
+	for current in "${MODULES[@]}"; do
+		echo "* FAKE MODULE '$current'"
+		make_module $current
+	done
+
+	# Let's zip!
+	BUILD=$(date +%Y.%m.%d@%H.%M)
+	$ZIP a ./builds/$PROJECT-$BUILD.zip ./build/* > /dev/null
+	echo "+ [ZIP] Build was zipped to ./builds/$PROJECT-$BUILD.zip"
+}
+main 
+
+exit 0
