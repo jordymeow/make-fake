@@ -32,7 +32,7 @@ function GetCompressor () {
 		echo "$CAT"
 	elif [[ "$OPT" = "--uglify" ]] && which "$UGLIFY" >/dev/null; then
 		echo "$UGLIFY"
-	else 
+	else
 		echo "$YUI"
 	fi
 
@@ -67,7 +67,7 @@ function CopyCommand () {
 		echo "- [ERROR] Failed to copy ./$MODULE/$SOURCE > ./build/$MODULE/$TARGET With error: $ERR"
 		return 1
 	fi
-	
+
 	echo "+ [FOPY] ./$MODULE/$SOURCE > ./build/$MODULE/$TARGET"
 
 	return 0
@@ -84,14 +84,13 @@ function PackJSCommand () {
 		return 1
 	fi
 
-	# TODO: this probably doesn't catch anything useful, break it down more
-	if ! ERR=$(echo -e "\n"$($PACKJS ./$MODULE/$SOURCE | tr -d '\r')"\n"  >> ./build/$MODULE/$TARGET 2>&1); then
-		echo "- [ERROR] Failed packing js in ./build/$MODULE/$TARGET With error: $ERR"
-		return 1
-	fi
+	echo -e "\n" >> ./build/$MODULE/$TARGET
+	$PACKJS ./$MODULE/$SOURCE | tr -d '\r' >> ./build/$MODULE/$TARGET
+	echo -e "\n" >> ./build/$MODULE/$TARGET
 
 	echo "+ [FACK] ./$MODULE/$SOURCE > ./build/$MODULE/$TARGET"
-	
+
+
 	return 0
 }
 
@@ -108,23 +107,18 @@ function PackCSSCommand () {
 
 	if [[ $SOURCE == *.less* ]]; then
 
-		if ! ERR=$($LESSC ./$MODULE/$SOURCE >> ./build/$MODULE/$TARGET 2>&1); then
-			echo "- [ERROR] Failed running 'less' on ./$MODULE/$SOURCE"	
-			return 1
-		fi
+		$LESSC ./$MODULE/$SOURCE >> ./build/$MODULE/$TARGET
 
 		echo "+ [FESS] ./$MODULE/$SOURCE > ./build/$MODULE/$TARGET"
-		
+
 	else
 
-		# TODO: this probably doesn't catch anything useful, break it down more
-		if ! ERR=$(echo -e "\n"$($PACKCSS ./$MODULE/$SOURCE | tr -d '\r')"\n"  >> ./build/$MODULE/$TARGET 2>&1); then
-			echo "- [ERROR] Failed packing css in ./build/$MODULE/$TARGET With error: $ERR"
-			return 1
-		fi
+		echo -e "\n" >> ./build/$MODULE/$TARGET
+		$PACKCSS ./$MODULE/$SOURCE | tr -d '\r' >> ./build/$MODULE/$TARGET
+		echo -e "\n" >> ./build/$MODULE/$TARGET
 
 		echo "+ [FACK] ./$MODULE/$SOURCE > ./build/$MODULE/$TARGET"
-		
+
 	fi
 
 	return 0
@@ -187,6 +181,6 @@ function main () {
 	$ZIP a ./builds/$PROJECT-$BUILD.zip ./build/* > /dev/null
 	echo "+ [ZIP] Build was zipped to ./builds/$PROJECT-$BUILD.zip"
 }
-main 
+main
 
 exit 0
